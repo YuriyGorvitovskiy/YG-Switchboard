@@ -1,6 +1,7 @@
 // use https://openjscad.xyz/
-const { cylinder, cylinderElliptic, cuboid, polygon, sphere } =
-  require("@jscad/modeling").primitives;
+const jscad = require("@jscad/modeling");
+const { cylinder, cylinderElliptic, cuboid, polygon, rectangle, sphere } =
+  jscad.primitives;
 const {
   mirrorX,
   mirrorY,
@@ -11,9 +12,11 @@ const {
   translateX,
   translateY,
   translateZ,
-} = require("@jscad/modeling").transforms;
-const { subtract, union } = require("@jscad/modeling").booleans;
-const { extrudeLinear } = require("@jscad/modeling").extrusions;
+} = jscad.transforms;
+const { subtract, union } = jscad.booleans;
+const { extrudeFromSlices, extrudeLinear, slice } = jscad.extrusions;
+const { geom2 } = jscad.geometries;
+const { mat4 } = jscad.maths;
 
 // Prototype mesurments
 const PROTO_TOTAL_HEIGHT_MM = 4225;
@@ -108,6 +111,8 @@ const DRAWING2_DUST_CATCHER_CYL5_DIAMETER_PX = 67;
 const DRAWING2_DUST_CATCHER_CYL6_DIAMETER_PX = 40;
 const DRAWING2_DUST_CATCHER_CYL7_DIAMETER_PX = 62;
 
+const DRAWING2_DUST_CATCHER_INPUT_HEIGHT_PX = 43;
+
 // Drawing 2 Scale
 const DRAWING2_MODEL_X_SCALE =
   MODEL_PLATFORM_LENGTH_MM / DRAWING2_PLATFORM_LENGTH_PX;
@@ -116,16 +121,24 @@ const DRAWING2_MODEL_Y_SCALE =
 const DRAWING2_MODEL_Z_SCALE =
   MODEL_NARROW_CYLINDER_HEIGHT_MM / DRAWING2_NARROW_CYLYNDER_HEIGHT_PX;
 
-const spiral_square_tube = (w, h, angle1, angle2, h1, h2, d1, d2, fn) => {
-  const points = [];
-  const angle_inc = (angle2 - angle1) / fn;
-  const h_inc = (h2 - h1) / fn;
-  const d_inc = (d2 - d1) / fn;
-
-  for (let i = 0; i <= fn; i++) {}
-
-  return rectangular_extrude(points, { w, h, closed: false });
+const spiral = (shape, a, radius1, radius2, y, segments) => {
+  return extrudeFromSlices(
+    {
+      numberOfSlices: segments + 1,
+      callback: (p, i, b) => {
+        const rot = mat4.fromYRotation(mat4.create(), -(a * i) / segments);
+        const tr = mat4.fromTranslation(mat4.create(), [
+          radius1 + ((radius2 - radius1) * i) / segments,
+          (y * i) / segments,
+          0,
+        ]);
+        return slice.transform(mat4.multiply(mat4.create(), rot, tr), b);
+      },
+    },
+    shape
+  );
 };
+
 const dust_cyclon = () => {
   const centerX =
     MODEL_PLATFORM_DISTAMCE_FLAT_MM +
@@ -172,6 +185,14 @@ const dust_cyclon = () => {
   const r7 =
     (DRAWING2_DUST_CATCHER_CYL7_DIAMETER_PX * DRAWING2_MODEL_X_SCALE) / 2;
 
+  const in_width = r5 / 2;
+  const in_height =
+    DRAWING2_DUST_CATCHER_INPUT_HEIGHT_PX * DRAWING2_MODEL_X_SCALE;
+  const in_radius = r5 - in_width / 2;
+
+  const rect = slice.fromSides(
+    geom2.toSides(rectangle({ size: [in_width, in_height] }))
+  );
   return union(
     translate(
       [centerX, 0, z7],
@@ -188,6 +209,22 @@ const dust_cyclon = () => {
         height: DRAWING2_DUST_CATCHER_CYL6_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
         segments: 128,
       })
+    ),
+    translate(
+      [
+        centerX,
+        0,
+        z5 +
+          (DRAWING2_DUST_CATCHER_CYL5_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE) / 2 +
+          in_height / 2,
+      ],
+      rotateZ(
+        Math.PI / 2,
+        rotateX(
+          Math.PI / 2,
+          spiral(rect, (Math.PI * 3) / 2, in_radius, in_radius, -in_height, 128)
+        )
+      )
     ),
     translate(
       [centerX, 0, z5],
