@@ -221,7 +221,7 @@ const dust_outtake_tube = (x, y, z) => {
             size: [height + 2 * rim, width + 2 * rim, rim],
           }),
           translateZ(
-            tube_transition,
+            tube_transition + rim / 2,
             cylinder({
               radius: tube_radius + rim,
               height: rim,
