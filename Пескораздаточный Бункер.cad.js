@@ -1,7 +1,14 @@
 // use https://openjscad.xyz/
 const jscad = require("@jscad/modeling");
-const { cylinder, cylinderElliptic, cuboid, polygon, rectangle, sphere } =
-  jscad.primitives;
+const {
+  circle,
+  cylinder,
+  cylinderElliptic,
+  cuboid,
+  polygon,
+  rectangle,
+  sphere,
+} = jscad.primitives;
 const {
   mirrorX,
   mirrorY,
@@ -99,6 +106,7 @@ const DRAWING2_DUST_CATCHER_CYL2_HEIGHT_PX = 63;
 const DRAWING2_DUST_CATCHER_CYL3_HEIGHT_PX = 18;
 const DRAWING2_DUST_CATCHER_CYL4_HEIGHT_PX = 93;
 const DRAWING2_DUST_CATCHER_CYL5_HEIGHT_PX = 115;
+const DRAWING2_DUST_CATCHER_CYL5_RIM_HEIGHT_PX = 47;
 const DRAWING2_DUST_CATCHER_CYL6_HEIGHT_PX = 56;
 const DRAWING2_DUST_CATCHER_CYL7_HEIGHT_PX = 40;
 
@@ -109,9 +117,25 @@ const DRAWING2_DUST_CATCHER_CYL3_DIAMETER_PX = 54;
 const DRAWING2_DUST_CATCHER_CYL4_DIAMETER_PX = 36;
 const DRAWING2_DUST_CATCHER_CYL5_DIAMETER_PX = 67;
 const DRAWING2_DUST_CATCHER_CYL6_DIAMETER_PX = 40;
+const DRAWING2_DUST_CATCHER_CYL5_RIM_DIAMETER_PX = 53;
 const DRAWING2_DUST_CATCHER_CYL7_DIAMETER_PX = 62;
 
 const DRAWING2_DUST_CATCHER_INPUT_HEIGHT_PX = 43;
+const DRAWING2_DUST_CATCHER_INPUT_DIAMETER_PX = 39;
+const DRAWING2_DUST_CATCHER_INPUT_TRANSITION_PX = 55;
+
+const DRAWING2_DUST_IN_TUBE_CYL1_DIAMETER_PX = 50;
+const DRAWING2_DUST_IN_TUBE_CYL2_DIAMETER_PX = 65;
+const DRAWING2_DUST_IN_TUBE_CYL3_DIAMETER_PX = 50;
+
+const DRAWING2_DUST_IN_TUBE_CYL1_POSITION_PX = 17;
+const DRAWING2_DUST_IN_TUBE_CYL2_POSITION_PX = 70;
+const DRAWING2_DUST_IN_TUBE_CYL3_POSITION_PX = 63;
+
+const DRAWING2_DUST_OUTTAKE_WIDTH_PX = 17;
+const DRAWING2_DUST_OUTTAKE_DIAMETER_PX = 26;
+const DRAWING2_DUST_OUTTAKE_TRANSITION_PX = 15;
+const DRAWING2_DUST_OUTTAKE_LENGTH1_PX = 9;
 
 // Drawing 2 Scale
 const DRAWING2_MODEL_X_SCALE =
@@ -138,12 +162,316 @@ const spiral = (shape, a, radius1, radius2, y, segments) => {
     shape
   );
 };
+const rect_rect_extrude = (size1, size2, shift) => {
+  const rect1 = slice.fromSides(geom2.toSides(rectangle({ size: size1 })));
+  const rect2 = slice.transform(
+    mat4.fromTranslation(mat4.create(), shift),
+    slice.fromSides(geom2.toSides(rectangle({ size: size2 })))
+  );
+  return extrudeFromSlices(
+    {
+      numberOfSlices: 2,
+      callback: (p, i, b) => b[i],
+    },
+    [rect1, rect2]
+  );
+};
+const rect_cycle_extrude = (size, radius, length, segments) => {
+  const rect = slice.fromSides(geom2.toSides(rectangle({ size })));
+  const circ = slice.transform(
+    mat4.fromZRotation(mat4.create(), (3 * Math.PI) / 4),
+    slice.fromSides(geom2.toSides(circle({ radius, segments })))
+  );
+  return extrudeFromSlices(
+    {
+      numberOfSlices: 2,
+      callback: (p, i, b) => {
+        const tr = mat4.fromTranslation(mat4.create(), [0, 0, i * length]);
+        return slice.transform(tr, b[i]);
+      },
+    },
+    [rect, circ]
+  );
+};
 
-const dust_cyclon = () => {
-  const centerX =
-    MODEL_PLATFORM_DISTAMCE_FLAT_MM +
-    MODEL_RIM_PLATE_WIDTH_MM +
-    (DRAWING2_DUST_CATCHER_BASEMENT_LENGTH_PX * DRAWING2_MODEL_X_SCALE) / 2;
+const dust_outtake_tube = (x, y, z) => {
+  const tube_radius =
+    (DRAWING2_DUST_OUTTAKE_DIAMETER_PX * DRAWING2_MODEL_X_SCALE) / 2;
+  const tube_transition =
+    DRAWING2_DUST_OUTTAKE_TRANSITION_PX * DRAWING2_MODEL_Y_SCALE;
+  const tube_l1 = DRAWING2_DUST_OUTTAKE_LENGTH1_PX * DRAWING2_MODEL_Y_SCALE;
+
+  const width = DRAWING2_DUST_OUTTAKE_WIDTH_PX * DRAWING2_MODEL_X_SCALE;
+  const height = DRAWING2_DUST_CATCHER_CYL7_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE;
+  const rim = MODEL_SUPPORT_PLATE_DEPTH_MM / 2;
+  return translate(
+    [x, y, z],
+    rotateZ(
+      Math.PI / 2,
+      rotateY(
+        -Math.PI / 2,
+        union(
+          rect_cycle_extrude(
+            [height, width],
+            tube_radius,
+            tube_transition,
+            128
+          ),
+          cuboid({
+            size: [height + 2 * rim, width + 2 * rim, rim],
+          }),
+          translateZ(
+            tube_transition,
+            cylinder({
+              radius: tube_radius + rim,
+              height: rim,
+            })
+          ),
+          translateZ(
+            tube_transition + rim + tube_l1 / 2,
+            cylinder({
+              radius: tube_radius,
+              height: tube_l1,
+            })
+          )
+        )
+      )
+    )
+  );
+};
+
+const dust_intake_tube = (x, z, rect) => {
+  const tube_radius =
+    (DRAWING2_DUST_CATCHER_INPUT_DIAMETER_PX * DRAWING2_MODEL_Z_SCALE) / 2;
+  const tube_transition =
+    (DRAWING2_DUST_CATCHER_INPUT_TRANSITION_PX * DRAWING2_MODEL_X_SCALE) / 2;
+
+  const x3 = DRAWING2_DUST_IN_TUBE_CYL3_POSITION_PX * DRAWING2_MODEL_X_SCALE;
+  const x2 =
+    x3 + DRAWING2_DUST_IN_TUBE_CYL2_POSITION_PX * DRAWING2_MODEL_X_SCALE;
+  const x1 =
+    x2 +
+    DRAWING2_DUST_IN_TUBE_CYL1_POSITION_PX * DRAWING2_MODEL_X_SCALE +
+    MODEL_RIM_PLATE_WIDTH_MM;
+
+  const r1 =
+    (DRAWING2_DUST_IN_TUBE_CYL1_DIAMETER_PX * DRAWING2_MODEL_Z_SCALE) / 2;
+  const r2 =
+    (DRAWING2_DUST_IN_TUBE_CYL2_DIAMETER_PX * DRAWING2_MODEL_Z_SCALE) / 2;
+  const r3 =
+    (DRAWING2_DUST_IN_TUBE_CYL3_DIAMETER_PX * DRAWING2_MODEL_Z_SCALE) / 2;
+
+  const rim = 2 * (r1 - tube_radius);
+
+  return translate(
+    [x, 0, z],
+    rotateY(
+      -Math.PI / 2,
+      union(
+        rect_cycle_extrude(rect, tube_radius, tube_transition, 128),
+        translateZ(
+          tube_transition + x / 2,
+          cylinder({
+            radius: tube_radius,
+            height: x,
+            segments: 128,
+          })
+        ),
+        translateZ(
+          x1,
+          cylinder({
+            radius: r1,
+            height: MODEL_SUPPORT_PLATE_DEPTH_MM / 2,
+            segments: 128,
+          })
+        ),
+        translateZ(
+          x2,
+          cylinderElliptic({
+            endRadius: [r2, r2],
+            startRadius: [tube_radius, tube_radius],
+            height: MODEL_RIM_PLATE_WIDTH_MM,
+            segments: 128,
+          })
+        ),
+        translateZ(
+          x3,
+          cylinder({
+            radius: r3,
+            height: MODEL_SUPPORT_PLATE_DEPTH_MM / 2,
+            segments: 128,
+          })
+        ),
+        translateZ(
+          0,
+          cuboid({
+            size: [
+              rect[0] + rim,
+              rect[1] + rim,
+              MODEL_SUPPORT_PLATE_DEPTH_MM / 2,
+            ],
+          })
+        )
+      )
+    )
+  );
+};
+
+const dust_cyclon = (
+  centerX,
+  centerY,
+  in_width,
+  in_height,
+  in_z,
+  { r1, r2, r3, r4, r5, r6, r7, z1, z2, z3, z4, z5, z6, z7 }
+) => {
+  const spiral_length = (3 * Math.PI * r5) / 2;
+  const intake_length = r5;
+
+  const in_radius = r5 - in_width / 2;
+  const spiral_z2 =
+    in_z - (in_height * intake_length) / (spiral_length + intake_length);
+  const spiral_z1 =
+    spiral_z2 - (in_height * spiral_length) / (spiral_length + intake_length);
+
+  const z5_rim =
+    z5 +
+    (DRAWING2_DUST_CATCHER_CYL5_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE) / 2 +
+    DRAWING2_DUST_CATCHER_CYL5_RIM_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE;
+
+  const r5_rim =
+    (DRAWING2_DUST_CATCHER_CYL5_RIM_DIAMETER_PX * DRAWING2_MODEL_X_SCALE) / 2;
+
+  const rect = slice.fromSides(
+    geom2.toSides(rectangle({ size: [in_width, in_height] }))
+  );
+
+  return union(
+    translate(
+      [centerX, centerY, z7],
+      cylinder({
+        radius: r7,
+        height: DRAWING2_DUST_CATCHER_CYL7_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
+        segments: 128,
+      })
+    ),
+    translate(
+      [centerX - r7 / 2, centerY - r7 / 2, z7],
+      cuboid({
+        size: [
+          r7,
+          r7,
+          DRAWING2_DUST_CATCHER_CYL7_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
+        ],
+      })
+    ),
+    translate(
+      [centerX, centerY, z6],
+      cylinder({
+        radius: r6,
+        height: DRAWING2_DUST_CATCHER_CYL6_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
+        segments: 128,
+      })
+    ),
+    translate(
+      [centerX, centerY, z5_rim],
+      cylinder({
+        radius: r5_rim,
+        height: MODEL_SUPPORT_PLATE_DEPTH_MM / 2,
+        segments: 128,
+      })
+    ),
+
+    translate(
+      [centerX, centerY, spiral_z2],
+      rotateZ(
+        Math.PI / 2,
+        rotateX(
+          Math.PI / 2,
+          spiral(
+            rect,
+            (Math.PI * 3) / 2,
+            in_radius,
+            in_radius,
+            spiral_z1 - spiral_z2,
+            128
+          )
+        )
+      )
+    ),
+    translate(
+      [centerX, 0, spiral_z2],
+      rotateY(
+        -Math.PI / 2,
+        rect_rect_extrude(
+          [in_height, r5 - r6],
+          [in_height, in_width],
+          [in_z - spiral_z2, 0, r5]
+        )
+      )
+    ),
+    translate(
+      [centerX, centerY, z5],
+      cylinder({
+        radius: r5,
+        height: DRAWING2_DUST_CATCHER_CYL5_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
+        segments: 128,
+      })
+    ),
+    translate(
+      [centerX, centerY, z4],
+      cylinderElliptic({
+        endRadius: [r5, r5],
+        startRadius: [r4, r4],
+        height: DRAWING2_DUST_CATCHER_CYL4_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
+        segments: 128,
+      })
+    ),
+    translate(
+      [centerX, centerY, z3],
+      cylinderElliptic({
+        endRadius: [r4, r4],
+        startRadius: [r3, r3],
+        height: DRAWING2_DUST_CATCHER_CYL3_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
+        segments: 128,
+      })
+    ),
+    translate(
+      [
+        centerX,
+        centerY,
+        MODEL_PLATFORM_SURFACE_MM +
+          (DRAWING2_DUST_CATCHER_BASEMENT_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE) /
+            2,
+      ],
+      cuboid({
+        size: [
+          DRAWING2_DUST_CATCHER_BASEMENT_LENGTH_PX * DRAWING2_MODEL_X_SCALE,
+          DRAWING2_DUST_CATCHER_BASEMENT_WIDTH_PX * DRAWING2_MODEL_Y_SCALE,
+          DRAWING2_DUST_CATCHER_BASEMENT_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
+        ],
+      })
+    ),
+    translate(
+      [centerX, centerY, z2],
+      cylinderElliptic({
+        endRadius: [r2, r2],
+        startRadius: [r1, r1],
+        height: DRAWING2_DUST_CATCHER_CYL2_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
+        segments: 128,
+      })
+    ),
+    translate(
+      [centerX, centerY, z1],
+      cylinder({
+        radius: r1,
+        height: DRAWING2_DUST_CATCHER_CYL1_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
+        segments: 128,
+      })
+    )
+  );
+};
+const dust_catcher_assembly = () => {
   const z2 =
     MODEL_PLATFORM_SURFACE_MM -
     (DRAWING2_DUST_CATCHER_CYL2_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE) / 2;
@@ -185,117 +513,48 @@ const dust_cyclon = () => {
   const r7 =
     (DRAWING2_DUST_CATCHER_CYL7_DIAMETER_PX * DRAWING2_MODEL_X_SCALE) / 2;
 
-  const in_width = r5 / 2;
+  const centerX =
+    MODEL_PLATFORM_DISTAMCE_FLAT_MM +
+    MODEL_RIM_PLATE_WIDTH_MM +
+    (DRAWING2_DUST_CATCHER_BASEMENT_LENGTH_PX * DRAWING2_MODEL_X_SCALE) / 2;
+
+  const centerY = -(r5 + r6) / 2;
+
+  const in_width = (r5 * 2) / 3;
   const in_height =
     DRAWING2_DUST_CATCHER_INPUT_HEIGHT_PX * DRAWING2_MODEL_X_SCALE;
-  const in_radius = r5 - in_width / 2;
 
-  const rect = slice.fromSides(
-    geom2.toSides(rectangle({ size: [in_width, in_height] }))
-  );
+  const in_z =
+    z5 +
+    (DRAWING2_DUST_CATCHER_CYL5_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE) / 2 +
+    in_height / 2;
+
   return union(
-    translate(
-      [centerX, 0, z7],
-      cylinder({
-        radius: r7,
-        height: DRAWING2_DUST_CATCHER_CYL7_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
-        segments: 128,
-      })
-    ),
-    translate(
-      [centerX, 0, z6],
-      cylinder({
-        radius: r6,
-        height: DRAWING2_DUST_CATCHER_CYL6_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
-        segments: 128,
-      })
-    ),
-    translate(
-      [
-        centerX,
-        0,
-        z5 +
-          (DRAWING2_DUST_CATCHER_CYL5_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE) / 2 +
-          in_height / 2,
-      ],
-      rotateZ(
-        Math.PI / 2,
-        rotateX(
-          Math.PI / 2,
-          spiral(rect, (Math.PI * 3) / 2, in_radius, in_radius, -in_height, 128)
-        )
-      )
-    ),
-    translate(
-      [centerX, 0, z5],
-      cylinder({
-        radius: r5,
-        height: DRAWING2_DUST_CATCHER_CYL5_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
-        segments: 128,
-      })
-    ),
-    translate(
-      [centerX, 0, z4],
-      cylinderElliptic({
-        endRadius: [r5, r5],
-        startRadius: [r4, r4],
-        height: DRAWING2_DUST_CATCHER_CYL4_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
-        segments: 128,
-      })
-    ),
-    translate(
-      [centerX, 0, z3],
-      cylinderElliptic({
-        endRadius: [r4, r4],
-        startRadius: [r3, r3],
-        height: DRAWING2_DUST_CATCHER_CYL3_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
-        segments: 128,
-      })
-    ),
-    translate(
-      [
-        MODEL_PLATFORM_DISTAMCE_FLAT_MM + MODEL_RIM_PLATE_WIDTH_MM,
-        0,
-        MODEL_PLATFORM_SURFACE_MM,
-      ],
-      cuboid({
-        size: [
-          DRAWING2_DUST_CATCHER_BASEMENT_LENGTH_PX * DRAWING2_MODEL_X_SCALE,
-          DRAWING2_DUST_CATCHER_BASEMENT_WIDTH_PX * DRAWING2_MODEL_Y_SCALE,
-          DRAWING2_DUST_CATCHER_BASEMENT_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
-        ],
-        center: [
-          0.5 *
-            DRAWING2_DUST_CATCHER_BASEMENT_LENGTH_PX *
-            DRAWING2_MODEL_X_SCALE,
-          0,
-          0.5 *
-            DRAWING2_DUST_CATCHER_BASEMENT_HEIGHT_PX *
-            DRAWING2_MODEL_Z_SCALE,
-        ],
-      })
-    ),
-    translate(
-      [centerX, 0, z2],
-      cylinderElliptic({
-        endRadius: [r2, r2],
-        startRadius: [r1, r1],
-        height: DRAWING2_DUST_CATCHER_CYL2_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
-        segments: 128,
-      })
-    ),
-    translate(
-      [centerX, 0, z1],
-      cylinder({
-        radius: r1,
-        height: DRAWING2_DUST_CATCHER_CYL1_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE,
-        segments: 128,
-      })
+    dust_intake_tube(centerX - r5, in_z, [in_height, in_width]),
+    dust_cyclon(centerX, centerY, in_width, in_height, in_z, {
+      r1,
+      r2,
+      r3,
+      r4,
+      r5,
+      r6,
+      r7,
+      z1,
+      z2,
+      z3,
+      z4,
+      z5,
+      z6,
+      z7,
+    }),
+    dust_outtake_tube(
+      centerX -
+        r7 +
+        (DRAWING2_DUST_OUTTAKE_WIDTH_PX * DRAWING2_MODEL_X_SCALE) / 2,
+      centerY - r7,
+      z7
     )
   );
-};
-const dust_catcher_assembly = () => {
-  return dust_cyclon();
 };
 
 const platform = () => {
@@ -436,9 +695,7 @@ const hatch = () => {
     translateZ(
       level2 + MODEL_SUPPORT_PLATE_DEPTH_MM / 4,
       cylinder({
-        radius:
-          MODEL_NARROW_CYLINDER_DIAMETER_MM / 2 +
-          MODEL_SUPPORT_PLATE_DEPTH_MM / 2,
+        radius: r2,
         height: MODEL_SUPPORT_PLATE_DEPTH_MM / 2,
         segments: 256,
       })
@@ -446,7 +703,7 @@ const hatch = () => {
     translateZ(
       level1 + MODEL_RIM_PLATE_WIDTH_MM / 2,
       cylinder({
-        radius: MODEL_NARROW_CYLINDER_DIAMETER_MM / 2,
+        radius: r3,
         height: MODEL_RIM_PLATE_WIDTH_MM,
         segments: 256,
       })
@@ -454,9 +711,7 @@ const hatch = () => {
     translateZ(
       level0,
       cylinder({
-        radius:
-          MODEL_NARROW_CYLINDER_DIAMETER_MM / 2 -
-          MODEL_SUPPORT_PLATE_DEPTH_MM / 2,
+        radius: r4,
         height: MODEL_SUPPORT_PLATE_DEPTH_MM, // extends twise so sides deep into cone
         segments: 256,
       })
@@ -481,7 +736,7 @@ const hatch = () => {
 const top_column_lid = () => {
   const level0 = MODEL_CYLINDER_TOP_MM;
   const level1 = level0 + MODEL_SUPPORT_PLATE_DEPTH_MM / 2;
-  const level2 = level1 + MODEL_SUPPORT_PLATE_DEPTH_MM;
+  const level2 = level1 + MODEL_SUPPORT_PLATE_DEPTH_MM / 2;
 
   return union(
     translateZ(
@@ -507,13 +762,13 @@ const top_column_lid = () => {
       })
     ),
     translateZ(
-      MODEL_CYLINDER_TOP_MM,
+      level0,
       cylinder({
         radius:
           (MODEL_NARROW_CYLINDER_DIAMETER_MM + MODEL_SUPPORT_PLATE_DEPTH_MM) /
           2,
         height: MODEL_SUPPORT_PLATE_DEPTH_MM / 2,
-        segments: 64,
+        segments: 256,
       })
     )
   );
