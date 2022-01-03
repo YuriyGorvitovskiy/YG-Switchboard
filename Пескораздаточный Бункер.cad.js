@@ -137,6 +137,19 @@ const DRAWING2_DUST_OUTTAKE_DIAMETER_PX = 26;
 const DRAWING2_DUST_OUTTAKE_TRANSITION_PX = 15;
 const DRAWING2_DUST_OUTTAKE_LENGTH1_PX = 9;
 
+const DRAWING2_DUST_MOTOR_CENTER_Z_PX = 114;
+
+const DRAWING2_DUST_MOTOR_LENGTH1_PX = 32;
+const DRAWING2_DUST_MOTOR_LENGTH2_PX = 40;
+const DRAWING2_DUST_MOTOR_LENGTH3_PX = 30;
+
+const DRAWING2_DUST_MOTOR_DIAMETER1_PX = 86;
+const DRAWING2_DUST_MOTOR_DIAMETER2_PX = 95;
+const DRAWING2_DUST_MOTOR_DIAMETER3_PX = 105;
+const DRAWING2_DUST_MOTOR_DIAMETER4_PX = 180;
+
+const DRAWING2_DUST_MOTOR_EXHAUST_WIDTH_PX = 60;
+
 // Drawing 2 Scale
 const DRAWING2_MODEL_X_SCALE =
   MODEL_PLATFORM_LENGTH_MM / DRAWING2_PLATFORM_LENGTH_PX;
@@ -145,17 +158,16 @@ const DRAWING2_MODEL_Y_SCALE =
 const DRAWING2_MODEL_Z_SCALE =
   MODEL_NARROW_CYLINDER_HEIGHT_MM / DRAWING2_NARROW_CYLYNDER_HEIGHT_PX;
 
-const spiral = (shape, a, radius1, radius2, y, segments) => {
+const spiral = (shape, a, radius1, radius2, shift, segments) => {
   return extrudeFromSlices(
     {
       numberOfSlices: segments + 1,
       callback: (p, i, b) => {
-        const rot = mat4.fromYRotation(mat4.create(), -(a * i) / segments);
-        const tr = mat4.fromTranslation(mat4.create(), [
-          radius1 + ((radius2 - radius1) * i) / segments,
-          (y * i) / segments,
-          0,
-        ]);
+        const angle = (a * i) / segments;
+        const radius = radius1 + ((radius2 - radius1) * i) / segments;
+        const y = (shift * i) / segments;
+        const rot = mat4.fromYRotation(mat4.create(), -angle);
+        const tr = mat4.fromTranslation(mat4.create(), [radius, y, 0]);
         return slice.transform(mat4.multiply(mat4.create(), rot, tr), b);
       },
     },
@@ -191,6 +203,91 @@ const rect_cycle_extrude = (size, radius, length, segments) => {
       },
     },
     [rect, circ]
+  );
+};
+
+const dust_motor = (center_x, center_y, center_z) => {
+  const r0 = (DRAWING2_DUST_OUTTAKE_DIAMETER_PX * DRAWING2_MODEL_X_SCALE) / 2;
+  const r1 = (DRAWING2_DUST_MOTOR_DIAMETER1_PX * DRAWING2_MODEL_X_SCALE) / 2;
+  const r2 = (DRAWING2_DUST_MOTOR_DIAMETER2_PX * DRAWING2_MODEL_X_SCALE) / 2;
+  const r3 = (DRAWING2_DUST_MOTOR_DIAMETER3_PX * DRAWING2_MODEL_X_SCALE) / 2;
+  const r4 = (DRAWING2_DUST_MOTOR_DIAMETER4_PX * DRAWING2_MODEL_X_SCALE) / 2;
+
+  const l1 = DRAWING2_DUST_MOTOR_LENGTH1_PX * DRAWING2_MODEL_Y_SCALE;
+  const l2 = DRAWING2_DUST_MOTOR_LENGTH2_PX * DRAWING2_MODEL_Y_SCALE;
+  const l_rim = MODEL_SUPPORT_PLATE_DEPTH_MM / 2;
+  const l3 = DRAWING2_DUST_MOTOR_LENGTH3_PX * DRAWING2_MODEL_Y_SCALE;
+
+  const ex_width =
+    DRAWING2_DUST_MOTOR_EXHAUST_WIDTH_PX * DRAWING2_MODEL_X_SCALE;
+
+  const rect = slice.fromSides(geom2.toSides(rectangle({ size: [r3, l3] })));
+
+  return translate(
+    [center_x, center_y, center_z],
+    rotateX(
+      -Math.PI / 2,
+      union(
+        translateZ(
+          l1 + l2 + l3,
+          cylinder({
+            radius: r2,
+            height: l_rim,
+            segments: 128,
+          })
+        ),
+        translate(
+          [r4 / 2, -r3 / 2, l1 + l2 + l3 / 2],
+          cuboid({ size: [r4, r3, l3] })
+        ),
+        translateZ(
+          l1 + l2 + l3 / 2,
+          rotateZ(
+            Math.PI,
+            rotateX(
+              Math.PI / 2,
+              subtract(
+                spiral(rect, Math.PI, r3 / 2, r4 - r3 / 2, 0, 128),
+                translateX((3 * r3) / 2, cuboid({ size: [r3, l3, 2 * r4] }))
+              )
+            )
+          )
+        ),
+        translateZ(
+          l1 + l2 + l3 / 2,
+          cylinder({
+            radius: r3,
+            height: l3,
+            segments: 128,
+          })
+        ),
+        translateZ(
+          l1 + l2,
+          cylinder({
+            radius: r2,
+            height: l_rim,
+            segments: 128,
+          })
+        ),
+        translateZ(
+          l1 + l2 / 2,
+          cylinderElliptic({
+            endRadius: [r1, r1],
+            startRadius: [r0, r0],
+            height: l2,
+            segments: 128,
+          })
+        ),
+        translateZ(
+          l1 / 2,
+          cylinder({
+            radius: r0,
+            height: l1,
+            segments: 128,
+          })
+        )
+      )
+    )
   );
 };
 
@@ -553,6 +650,18 @@ const dust_catcher_assembly = () => {
         (DRAWING2_DUST_OUTTAKE_WIDTH_PX * DRAWING2_MODEL_X_SCALE) / 2,
       centerY - r7,
       z7
+    ),
+    dust_motor(
+      MODEL_PLATFORM_DISTAMCE_FLAT_MM +
+        MODEL_RIM_PLATE_WIDTH_MM +
+        DRAWING2_DUST_CATCHER_BASEMENT_LENGTH_PX * DRAWING2_MODEL_X_SCALE,
+      centerY -
+        r7 -
+        (DRAWING2_DUST_OUTTAKE_TRANSITION_PX +
+          DRAWING2_DUST_OUTTAKE_LENGTH1_PX) *
+          DRAWING2_MODEL_Y_SCALE,
+      MODEL_PLATFORM_SURFACE_MM +
+        DRAWING2_DUST_MOTOR_CENTER_Z_PX * DRAWING2_MODEL_Z_SCALE
     )
   );
 };
