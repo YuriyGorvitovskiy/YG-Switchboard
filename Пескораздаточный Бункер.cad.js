@@ -12,6 +12,7 @@ const {
 const {
   mirrorX,
   mirrorY,
+  mirrorZ,
   rotateX,
   rotateY,
   rotateZ,
@@ -137,6 +138,8 @@ const DRAWING2_DUST_OUTTAKE_DIAMETER_PX = 26;
 const DRAWING2_DUST_OUTTAKE_TRANSITION_PX = 15;
 const DRAWING2_DUST_OUTTAKE_LENGTH1_PX = 9;
 
+const DRAWING2_DUST_OUTTAKE_TUBE_CORNER_LENGTH_Z_PX = 31;
+
 const DRAWING2_DUST_MOTOR_CENTER_Z_PX = 114;
 
 const DRAWING2_DUST_MOTOR_LENGTH1_PX = 32;
@@ -149,6 +152,12 @@ const DRAWING2_DUST_MOTOR_DIAMETER3_PX = 105;
 const DRAWING2_DUST_MOTOR_DIAMETER4_PX = 180;
 
 const DRAWING2_DUST_MOTOR_EXHAUST_WIDTH_PX = 60;
+const DRAWING2_DUST_MOTOR_EXHAUST_DIAMETER1_PX = 25;
+const DRAWING2_DUST_MOTOR_EXHAUST_DIAMETER2_PX = 35;
+
+const DRAWING2_DUST_MOTOR_EXHAUST_HEIGHT1_PX = 87;
+const DRAWING2_DUST_MOTOR_EXHAUST_HEIGHT2_PX = 150;
+const DRAWING2_DUST_MOTOR_EXHAUST_HEIGHT3_PX = 15;
 
 // Drawing 2 Scale
 const DRAWING2_MODEL_X_SCALE =
@@ -205,7 +214,110 @@ const rect_cycle_extrude = (size, radius, length, segments) => {
     [rect, circ]
   );
 };
+const cycle_cycle_extrude = (radius, angle, shift, segments) => {
+  const circ1 = slice.transform(
+    mat4.fromTranslation(mat4.create(), [0, shift, 0]),
+    slice.fromSides(geom2.toSides(circle({ radius, segments })))
+  );
+  const circ2 = slice.transform(
+    mat4.fromXRotation(mat4.create(), angle),
+    circ1
+  );
+  return extrudeFromSlices(
+    {
+      numberOfSlices: 2,
+      callback: (p, i, b) => {
+        return b[i];
+      },
+    },
+    [circ1, circ2]
+  );
+};
 
+const dust_motor_exhaust = (center_x, center_y, center_z) => {
+  const width = DRAWING2_DUST_MOTOR_EXHAUST_WIDTH_PX * DRAWING2_MODEL_X_SCALE;
+  const length = DRAWING2_DUST_MOTOR_LENGTH3_PX * DRAWING2_MODEL_Y_SCALE;
+  const r1 =
+    (DRAWING2_DUST_MOTOR_EXHAUST_DIAMETER1_PX * DRAWING2_MODEL_X_SCALE) / 2;
+  const r2 =
+    (DRAWING2_DUST_MOTOR_EXHAUST_DIAMETER2_PX * DRAWING2_MODEL_X_SCALE) / 2;
+
+  const h1 = DRAWING2_DUST_MOTOR_EXHAUST_HEIGHT1_PX * DRAWING2_MODEL_Z_SCALE;
+  const h2 = DRAWING2_DUST_MOTOR_EXHAUST_HEIGHT2_PX * DRAWING2_MODEL_Z_SCALE;
+  const h3 = DRAWING2_DUST_MOTOR_EXHAUST_HEIGHT3_PX * DRAWING2_MODEL_Z_SCALE;
+
+  return translate(
+    [center_x, center_y, center_z],
+    union(
+      cuboid({
+        size: [
+          width + 2 * MODEL_SUPPORT_PLATE_DEPTH_MM,
+          length + 2 * MODEL_SUPPORT_PLATE_DEPTH_MM,
+          MODEL_SUPPORT_PLATE_DEPTH_MM / 2,
+        ],
+      }),
+      rect_cycle_extrude([width, length], r1, h1, 128),
+      translateZ(
+        h1 + h2 / 2,
+        cylinder({ radius: r1, height: h2, segments: 128 })
+      ),
+      translateZ(
+        h1 + h2 + h3 / 2,
+        cylinderElliptic({
+          endRadius: [0.001, 0.001],
+          startRadius: [r2, r2],
+          height: h3,
+          segments: 128,
+        })
+      )
+    )
+  );
+};
+const dust_tube = (in_x, in_y, in_z, out_x, out_y, out_z) => {
+  const radius =
+    (DRAWING2_DUST_OUTTAKE_DIAMETER_PX * DRAWING2_MODEL_X_SCALE) / 2;
+  const angle = Math.atan((out_x - in_x) / (in_z - out_z));
+  const distance = (in_z - out_z) / Math.cos(angle);
+
+  const corner =
+    (DRAWING2_DUST_OUTTAKE_TUBE_CORNER_LENGTH_Z_PX * DRAWING2_MODEL_X_SCALE) /
+    Math.cos(angle);
+
+  const length = distance - 2 * corner;
+
+  /*
+  const corner_tube = translateY(
+    corner,
+    mirrorY(cycle_cycle_extrude(radius, -Math.PI / 2, corner, 128))
+  );
+*/
+  const circ = slice.fromSides(
+    geom2.toSides(circle({ radius, segments: 128 }))
+  );
+  const corner_tube = translateY(
+    corner,
+    rotateZ(-Math.PI / 2, spiral(circ, Math.PI / 2, corner, corner, 0, 32))
+  );
+
+  return translate(
+    [in_x, in_y - corner, in_z],
+    rotateY(
+      Math.PI - angle,
+      union(
+        translateZ(corner, mirrorZ(corner_tube)),
+        translateZ(
+          distance / 2,
+          cylinder({
+            radius,
+            height: length,
+            segments: 128,
+          })
+        ),
+        translateZ(distance - corner, corner_tube)
+      )
+    )
+  );
+};
 const dust_motor = (center_x, center_y, center_z) => {
   const r0 = (DRAWING2_DUST_OUTTAKE_DIAMETER_PX * DRAWING2_MODEL_X_SCALE) / 2;
   const r1 = (DRAWING2_DUST_MOTOR_DIAMETER1_PX * DRAWING2_MODEL_X_SCALE) / 2;
@@ -217,9 +329,6 @@ const dust_motor = (center_x, center_y, center_z) => {
   const l2 = DRAWING2_DUST_MOTOR_LENGTH2_PX * DRAWING2_MODEL_Y_SCALE;
   const l_rim = MODEL_SUPPORT_PLATE_DEPTH_MM / 2;
   const l3 = DRAWING2_DUST_MOTOR_LENGTH3_PX * DRAWING2_MODEL_Y_SCALE;
-
-  const ex_width =
-    DRAWING2_DUST_MOTOR_EXHAUST_WIDTH_PX * DRAWING2_MODEL_X_SCALE;
 
   const rect = slice.fromSides(geom2.toSides(rectangle({ size: [r3, l3] })));
 
@@ -322,13 +431,15 @@ const dust_outtake_tube = (x, y, z) => {
             cylinder({
               radius: tube_radius + rim,
               height: rim,
+              segments: 128,
             })
           ),
           translateZ(
-            tube_transition + rim + tube_l1 / 2,
+            tube_transition + tube_l1 / 2,
             cylinder({
               radius: tube_radius,
               height: tube_l1,
+              segments: 128,
             })
           )
         )
@@ -626,6 +737,37 @@ const dust_catcher_assembly = () => {
     (DRAWING2_DUST_CATCHER_CYL5_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE) / 2 +
     in_height / 2;
 
+  const outtake_x =
+    centerX -
+    r7 +
+    (DRAWING2_DUST_OUTTAKE_WIDTH_PX * DRAWING2_MODEL_X_SCALE) / 2;
+  const outtake_y = centerY - r7;
+  const outtake_z = z7;
+
+  const motor_x =
+    MODEL_PLATFORM_DISTAMCE_FLAT_MM +
+    MODEL_RIM_PLATE_WIDTH_MM +
+    DRAWING2_DUST_CATCHER_BASEMENT_LENGTH_PX * DRAWING2_MODEL_X_SCALE;
+  const motor_y =
+    outtake_y -
+    (DRAWING2_DUST_OUTTAKE_TRANSITION_PX + DRAWING2_DUST_OUTTAKE_LENGTH1_PX) *
+      DRAWING2_MODEL_Y_SCALE;
+  const motor_z =
+    MODEL_PLATFORM_SURFACE_MM +
+    DRAWING2_DUST_MOTOR_CENTER_Z_PX * DRAWING2_MODEL_Z_SCALE;
+
+  const exhaust_x =
+    motor_x +
+    (DRAWING2_DUST_MOTOR_DIAMETER4_PX * DRAWING2_MODEL_X_SCALE) / 2 -
+    (DRAWING2_DUST_MOTOR_EXHAUST_WIDTH_PX * DRAWING2_MODEL_X_SCALE) / 2;
+  const exhaust_y =
+    motor_y +
+    (DRAWING2_DUST_MOTOR_LENGTH1_PX +
+      DRAWING2_DUST_MOTOR_LENGTH2_PX +
+      DRAWING2_DUST_MOTOR_LENGTH3_PX / 2) *
+      DRAWING2_MODEL_Y_SCALE;
+  const exhaust_z =
+    motor_z + (DRAWING2_DUST_MOTOR_DIAMETER3_PX * DRAWING2_MODEL_X_SCALE) / 2;
   return union(
     dust_intake_tube(centerX - r5, in_z, [in_height, in_width]),
     dust_cyclon(centerX, centerY, in_width, in_height, in_z, {
@@ -644,25 +786,10 @@ const dust_catcher_assembly = () => {
       z6,
       z7,
     }),
-    dust_outtake_tube(
-      centerX -
-        r7 +
-        (DRAWING2_DUST_OUTTAKE_WIDTH_PX * DRAWING2_MODEL_X_SCALE) / 2,
-      centerY - r7,
-      z7
-    ),
-    dust_motor(
-      MODEL_PLATFORM_DISTAMCE_FLAT_MM +
-        MODEL_RIM_PLATE_WIDTH_MM +
-        DRAWING2_DUST_CATCHER_BASEMENT_LENGTH_PX * DRAWING2_MODEL_X_SCALE,
-      centerY -
-        r7 -
-        (DRAWING2_DUST_OUTTAKE_TRANSITION_PX +
-          DRAWING2_DUST_OUTTAKE_LENGTH1_PX) *
-          DRAWING2_MODEL_Y_SCALE,
-      MODEL_PLATFORM_SURFACE_MM +
-        DRAWING2_DUST_MOTOR_CENTER_Z_PX * DRAWING2_MODEL_Z_SCALE
-    )
+    dust_outtake_tube(outtake_x, outtake_y, outtake_z),
+    dust_tube(outtake_x, motor_y, outtake_z, motor_x, motor_y, motor_z),
+    dust_motor(motor_x, motor_y, motor_z),
+    dust_motor_exhaust(exhaust_x, exhaust_y, exhaust_z)
   );
 };
 
