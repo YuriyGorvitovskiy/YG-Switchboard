@@ -159,6 +159,9 @@ const DRAWING2_DUST_MOTOR_EXHAUST_HEIGHT1_PX = 87;
 const DRAWING2_DUST_MOTOR_EXHAUST_HEIGHT2_PX = 150;
 const DRAWING2_DUST_MOTOR_EXHAUST_HEIGHT3_PX = 15;
 
+const DRAWING2_DUST_MOTOR_STAND_HEIGHT_PX = 25;
+const DRAWING2_DUST_MOTOR_STAND_WIDTH_PX = 48;
+
 // Drawing 2 Scale
 const DRAWING2_MODEL_X_SCALE =
   MODEL_PLATFORM_LENGTH_MM / DRAWING2_PLATFORM_LENGTH_PX;
@@ -231,6 +234,80 @@ const cycle_cycle_extrude = (radius, angle, shift, segments) => {
       },
     },
     [circ1, circ2]
+  );
+};
+const dust_motor_stand = (center_x, center_y, base_z, top_z) => {
+  const base_width = DRAWING2_DUST_MOTOR_DIAMETER2_PX * DRAWING2_MODEL_X_SCALE;
+  const base_length = DRAWING2_DUST_MOTOR_LENGTH3_PX * DRAWING2_MODEL_Y_SCALE;
+  const base_height =
+    DRAWING2_DUST_MOTOR_STAND_HEIGHT_PX * DRAWING2_MODEL_Z_SCALE;
+
+  const corner_support = cuboid({
+    size: [MODEL_RIM_PLATE_WIDTH_MM, MODEL_RIM_PLATE_WIDTH_MM, top_z - base_z],
+  });
+  const corner_support_x = base_width / 2 - MODEL_RIM_PLATE_WIDTH_MM / 2;
+  const corner_support_y = base_length / 2 - MODEL_RIM_PLATE_WIDTH_MM / 2;
+  const corner_support_z = (base_z + top_z) / 2;
+
+  return union(
+    translate(
+      [center_x, center_y, base_z + base_height / 2],
+      cuboid({ size: [base_width, base_length, base_height] })
+    ),
+    translate(
+      [center_x, center_y, base_z + base_height],
+      cuboid({
+        size: [
+          base_width + MODEL_SUPPORT_PLATE_DEPTH_MM,
+          base_length + MODEL_SUPPORT_PLATE_DEPTH_MM,
+          MODEL_SUPPORT_PLATE_DEPTH_MM / 2,
+        ],
+      })
+    ),
+    translate(
+      [center_x, center_y, (base_z + top_z) / 2],
+      cuboid({
+        size: [MODEL_RIM_PLATE_WIDTH_MM, base_length, top_z - base_z],
+      })
+    ),
+    translate(
+      [center_x, center_y, (base_z + top_z) / 2],
+      cuboid({
+        size: [base_width, MODEL_RIM_PLATE_WIDTH_MM, top_z - base_z],
+      })
+    ),
+    translate(
+      [
+        center_x - corner_support_x,
+        center_y - corner_support_y,
+        corner_support_z,
+      ],
+      corner_support
+    ),
+    translate(
+      [
+        center_x + corner_support_x,
+        center_y - corner_support_y,
+        corner_support_z,
+      ],
+      corner_support
+    ),
+    translate(
+      [
+        center_x - corner_support_x,
+        center_y + corner_support_y,
+        corner_support_z,
+      ],
+      corner_support
+    ),
+    translate(
+      [
+        center_x + corner_support_x,
+        center_y + corner_support_y,
+        corner_support_z,
+      ],
+      corner_support
+    )
   );
 };
 
@@ -768,6 +845,7 @@ const dust_catcher_assembly = () => {
       DRAWING2_MODEL_Y_SCALE;
   const exhaust_z =
     motor_z + (DRAWING2_DUST_MOTOR_DIAMETER3_PX * DRAWING2_MODEL_X_SCALE) / 2;
+
   return union(
     dust_intake_tube(centerX - r5, in_z, [in_height, in_width]),
     dust_cyclon(centerX, centerY, in_width, in_height, in_z, {
@@ -789,24 +867,80 @@ const dust_catcher_assembly = () => {
     dust_outtake_tube(outtake_x, outtake_y, outtake_z),
     dust_tube(outtake_x, motor_y, outtake_z, motor_x, motor_y, motor_z),
     dust_motor(motor_x, motor_y, motor_z),
-    dust_motor_exhaust(exhaust_x, exhaust_y, exhaust_z)
+    dust_motor_exhaust(exhaust_x, exhaust_y, exhaust_z),
+    dust_motor_stand(motor_x, exhaust_y, MODEL_PLATFORM_SURFACE_MM, motor_z)
   );
 };
 
 const platform = () => {
+  const rib = translateZ(
+    (MODEL_SUPPORT_PLATE_DEPTH_MM * 2) / 3,
+    rotateX(
+      Math.PI / 4,
+      cuboid({
+        size: [
+          MODEL_RIM_PLATE_WIDTH_MM,
+          MODEL_SUPPORT_PLATE_DEPTH_MM,
+          MODEL_SUPPORT_PLATE_DEPTH_MM,
+        ],
+      })
+    )
+  );
+  const rib1 = rotateZ(Math.PI / 4, rib);
+  const rib2 = rotateZ(-Math.PI / 4, rib);
+
+  const rib1s = [];
+  for (
+    let y = 0;
+    y < MODEL_PLATFORM_WIDTH_MM / 2 - MODEL_RIM_PLATE_WIDTH_MM;
+    y += 2 * MODEL_RIM_PLATE_WIDTH_MM
+  ) {
+    for (
+      let x = MODEL_PLATFORM_LENGTH_MM - MODEL_RIM_PLATE_WIDTH_MM;
+      x > 0;
+      x -= 2 * MODEL_RIM_PLATE_WIDTH_MM
+    ) {
+      rib1s.push(translate([x, y, 0], rib1));
+      rib1s.push(translate([x, -y, 0], rib1));
+    }
+  }
+  const rib2s = [];
+  for (
+    let y = MODEL_RIM_PLATE_WIDTH_MM;
+    y < MODEL_PLATFORM_WIDTH_MM / 2 - MODEL_RIM_PLATE_WIDTH_MM;
+    y += 2 * MODEL_RIM_PLATE_WIDTH_MM
+  ) {
+    for (
+      let x = MODEL_PLATFORM_LENGTH_MM - 2 * MODEL_RIM_PLATE_WIDTH_MM;
+      x > 0;
+      x -= 2 * MODEL_RIM_PLATE_WIDTH_MM
+    ) {
+      rib2s.push(translate([x, y, 0], rib2));
+      rib2s.push(translate([x, -y, 0], rib2));
+    }
+  }
   return translateZ(
     MODEL_PLATFORM_SURFACE_MM -
       MODEL_RIM_PLATE_WIDTH_MM +
       MODEL_RIM_PLATE_WIDTH_MM / 2,
-    translateX(
-      MODEL_PLATFORM_DISTANCE_CURVE_MM + MODEL_PLATFORM_LENGTH_MM / 2,
-      cuboid({
-        size: [
-          MODEL_PLATFORM_LENGTH_MM,
-          MODEL_PLATFORM_WIDTH_MM,
-          MODEL_RIM_PLATE_WIDTH_MM,
-        ],
-      })
+    union(
+      translateX(
+        MODEL_PLATFORM_DISTANCE_CURVE_MM + MODEL_PLATFORM_LENGTH_MM / 2,
+        cuboid({
+          size: [
+            MODEL_PLATFORM_LENGTH_MM,
+            MODEL_PLATFORM_WIDTH_MM,
+            MODEL_RIM_PLATE_WIDTH_MM,
+          ],
+        })
+      ),
+      subtract(
+        translateX(MODEL_PLATFORM_DISTANCE_CURVE_MM, union(...rib1s, ...rib2s)),
+        cylinder({
+          radius: MODEL_WIDE_CYLINDER_DIAMETER_MM / 2,
+          height: 2 * MODEL_RIM_PLATE_WIDTH_MM,
+        })
+      )
     )
   );
 };
