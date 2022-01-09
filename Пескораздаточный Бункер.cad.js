@@ -77,21 +77,23 @@ const MODEL_CYLINDER_TOP_MM =
 const MODEL_DISTRIBUTION_BOX_HEIGHT_MM =
   DRAWING1_DISTRIBUTION_BOX_HEIGHT_PX * VERTICAL_DRAWING1_MODEL_SCALE;
 
+const MODEL_CENTER_RIM_BOTTOM_MM = MODEL_WIDE_CYLINDER_TOTAL_HEIGHT_MM / 2;
+const MODEL_RIM_PLATE_WIDTH_MM = 1;
+
+const MODEL_SUPPORT_PLATE_DEPTH_MM = 0.5;
+const MODEL_SUPPORT_PLATE_WIDTH_MM = 2;
+
 const MODEL_PLATFORM_DISTANCE_CURVE_MM = MODEL_WIDE_CYLINDER_DIAMETER_MM / 4;
 const MODEL_PLATFORM_DISTAMCE_FLAT_MM = MODEL_WIDE_CYLINDER_DIAMETER_MM / 2;
 const MODEL_PLATFORM_SURFACE_MM = MODEL_WIDE_CYLINDER_TOTAL_HEIGHT_MM;
 const MODEL_PLATFORM_LENGTH_MM =
   PROTO_TOTAL_LENGTH_MM * PROTO_MODEL_SCALE -
   MODEL_WIDE_CYLINDER_DIAMETER_MM / 2 -
-  MODEL_PLATFORM_DISTANCE_CURVE_MM;
+  MODEL_PLATFORM_DISTANCE_CURVE_MM +
+  2 * MODEL_RIM_PLATE_WIDTH_MM;
 const MODEL_PLATFORM_WIDTH_MM =
-  MODEL_WIDE_CYLINDER_DIAMETER_MM * Math.sin(Math.PI / 3);
-
-const MODEL_CENTER_RIM_BOTTOM_MM = MODEL_WIDE_CYLINDER_TOTAL_HEIGHT_MM / 2;
-const MODEL_RIM_PLATE_WIDTH_MM = 1;
-
-const MODEL_SUPPORT_PLATE_DEPTH_MM = 0.5;
-const MODEL_SUPPORT_PLATE_WIDTH_MM = 2;
+  MODEL_WIDE_CYLINDER_DIAMETER_MM * Math.sin(Math.PI / 3) +
+  2 * MODEL_RIM_PLATE_WIDTH_MM;
 
 // Drawing 2 mesurments
 const DRAWING2_PLATFORM_LENGTH_PX = 363;
@@ -160,7 +162,10 @@ const DRAWING2_DUST_MOTOR_EXHAUST_HEIGHT2_PX = 150;
 const DRAWING2_DUST_MOTOR_EXHAUST_HEIGHT3_PX = 15;
 
 const DRAWING2_DUST_MOTOR_STAND_HEIGHT_PX = 25;
-const DRAWING2_DUST_MOTOR_STAND_WIDTH_PX = 48;
+
+const DRAWING2_HANDRAILS_HEIGHT1_PX = 48;
+const DRAWING2_HANDRAILS_HEIGHT2_PX = 122;
+const DRAWING2_HANDRAILS_HEIGHT3_PX = 198;
 
 // Drawing 2 Scale
 const DRAWING2_MODEL_X_SCALE =
@@ -236,6 +241,95 @@ const cycle_cycle_extrude = (radius, angle, shift, segments) => {
     [circ1, circ2]
   );
 };
+const handrails_rails = () => {
+  const inside_radius = MODEL_WIDE_CYLINDER_DIAMETER_MM / 2;
+  const outside_radius = inside_radius + MODEL_RIM_PLATE_WIDTH_MM;
+  const outside_width = MODEL_PLATFORM_WIDTH_MM;
+  const outside_length = MODEL_PLATFORM_LENGTH_MM;
+  const inside_width = outside_width - 2 * MODEL_RIM_PLATE_WIDTH_MM;
+  const inside_length = outside_length;
+
+  const height1 = DRAWING2_HANDRAILS_HEIGHT1_PX * DRAWING2_MODEL_Z_SCALE;
+  const height2 = DRAWING2_HANDRAILS_HEIGHT2_PX * DRAWING2_MODEL_Z_SCALE;
+  const height3 = DRAWING2_HANDRAILS_HEIGHT3_PX * DRAWING2_MODEL_Z_SCALE;
+  const shift_x = MODEL_PLATFORM_DISTANCE_CURVE_MM + outside_length / 2;
+
+  const rail = subtract(
+    union(
+      cylinder({
+        radius: outside_radius,
+        height: MODEL_RIM_PLATE_WIDTH_MM,
+        segments: 256,
+      }),
+      translateX(
+        shift_x,
+        cuboid({
+          size: [outside_length, outside_width, MODEL_RIM_PLATE_WIDTH_MM],
+        })
+      )
+    ),
+    union(
+      cylinder({
+        radius: inside_radius,
+        height: MODEL_RIM_PLATE_WIDTH_MM,
+        segments: 256,
+      }),
+      translateX(
+        shift_x - MODEL_RIM_PLATE_WIDTH_MM,
+        cuboid({
+          size: [inside_length, inside_width, MODEL_RIM_PLATE_WIDTH_MM],
+        })
+      )
+    )
+  );
+  return union(
+    translateZ(height1, rail),
+    translateZ(height2, rail),
+    translateZ(height3, rail)
+  );
+};
+
+const handrails_poles = () => {
+  const shift2_x =
+    MODEL_PLATFORM_DISTANCE_CURVE_MM +
+    MODEL_PLATFORM_LENGTH_MM -
+    MODEL_RIM_PLATE_WIDTH_MM / 2;
+  const shift1_x = shift2_x - MODEL_PLATFORM_LENGTH_MM / 2;
+  const shift_y = (MODEL_PLATFORM_WIDTH_MM - MODEL_RIM_PLATE_WIDTH_MM) / 2;
+
+  const height = DRAWING2_HANDRAILS_HEIGHT3_PX * DRAWING2_MODEL_Z_SCALE;
+  const pole = translateZ(
+    height / 2,
+    cuboid({
+      size: [MODEL_RIM_PLATE_WIDTH_MM, MODEL_RIM_PLATE_WIDTH_MM, height],
+    })
+  );
+  const pole1 = translateX(
+    -MODEL_WIDE_CYLINDER_DIAMETER_MM / 2 - MODEL_RIM_PLATE_WIDTH_MM / 2,
+    pole
+  );
+
+  return union(
+    pole1,
+    rotateZ(Math.PI / 3, pole1),
+    rotateZ(-Math.PI / 3, pole1),
+    rotateZ((Math.PI * 2) / 3, pole1),
+    rotateZ(-(Math.PI * 2) / 3, pole1),
+    translate([shift1_x, shift_y, 0], pole),
+    translate([shift1_x, -shift_y, 0], pole),
+    translate([shift2_x, shift_y, 0], pole),
+    translate([shift2_x, -shift_y, 0], pole),
+    translate([shift2_x, 0, 0], pole)
+  );
+};
+
+const handrails = () => {
+  return translateZ(
+    MODEL_PLATFORM_SURFACE_MM,
+    union(handrails_rails(), handrails_poles())
+  );
+};
+
 const dust_motor_stand = (center_x, center_y, base_z, top_z) => {
   const base_width = DRAWING2_DUST_MOTOR_DIAMETER2_PX * DRAWING2_MODEL_X_SCALE;
   const base_length = DRAWING2_DUST_MOTOR_LENGTH3_PX * DRAWING2_MODEL_Y_SCALE;
@@ -800,7 +894,6 @@ const dust_catcher_assembly = () => {
 
   const centerX =
     MODEL_PLATFORM_DISTAMCE_FLAT_MM +
-    MODEL_RIM_PLATE_WIDTH_MM +
     (DRAWING2_DUST_CATCHER_BASEMENT_LENGTH_PX * DRAWING2_MODEL_X_SCALE) / 2;
 
   const centerY = -(r5 + r6) / 2;
@@ -823,7 +916,6 @@ const dust_catcher_assembly = () => {
 
   const motor_x =
     MODEL_PLATFORM_DISTAMCE_FLAT_MM +
-    MODEL_RIM_PLATE_WIDTH_MM +
     DRAWING2_DUST_CATCHER_BASEMENT_LENGTH_PX * DRAWING2_MODEL_X_SCALE;
   const motor_y =
     outtake_y -
@@ -1027,7 +1119,12 @@ const platform_support = () => {
 };
 
 const platform_assembly = () => {
-  return union(platform(), platform_support(), dust_catcher_assembly());
+  return union(
+    platform(),
+    platform_support(),
+    handrails(),
+    dust_catcher_assembly()
+  );
 };
 const hatch = () => {
   const level0 = 0;
@@ -1205,7 +1302,7 @@ const bottom_cylinder = () => {
     })
   );
   const rim = cylinder({
-    radius: MODEL_WIDE_CYLINDER_DIAMETER_MM / 2 + MODEL_SUPPORT_PLATE_DEPTH_MM,
+    radius: MODEL_WIDE_CYLINDER_DIAMETER_MM / 2 + MODEL_RIM_PLATE_WIDTH_MM,
     height: MODEL_RIM_PLATE_WIDTH_MM,
     segments: 256,
   });
